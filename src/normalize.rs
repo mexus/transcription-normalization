@@ -3,10 +3,17 @@ use crate::numbers;
 use crate::token::{Canonical, Fragment, Token};
 use crate::word::Word;
 
-const PUNCT: &[char] = &[
+/// Punctuation that acts as a word separator when it appears between letters
+/// (e.g. `Яндекс.Колонку` from a transcriber joining names by `.`). Apostrophe
+/// is intentionally absent so English contractions stay glued.
+const SPLIT_PUNCT: &[char] = &[
     '.', ',', '!', '?', ';', ':', '"', '«', '»', '(', ')', '[', ']',
-    '\'', '\u{2018}', '\u{2019}', '\u{201C}', '\u{201D}', '…',
+    '\u{201C}', '\u{201D}', '…',
 ];
+
+/// Boundary-only punctuation: stripped from the start/end of a piece after
+/// splitting. Covers the apostrophes that `SPLIT_PUNCT` deliberately omits.
+const TRIM_PUNCT: &[char] = &['\'', '\u{2018}', '\u{2019}'];
 
 pub fn tokenize(words: &[Word], lang: Language) -> Vec<Token> {
     let fragments = build_fragments(words);
@@ -15,23 +22,51 @@ pub fn tokenize(words: &[Word], lang: Language) -> Vec<Token> {
 
 fn build_fragments(words: &[Word]) -> Vec<Fragment> {
     let mut out = Vec::new();
+    let mut buf: Vec<String> = Vec::new();
     for (idx, w) in words.iter().enumerate() {
         for piece in w.text.split_whitespace() {
-            let normalized = normalize_fragment(piece);
-            if !normalized.is_empty() {
-                out.push(Fragment { word_index: idx, text: normalized });
+            buf.clear();
+            normalize_into(piece, &mut buf);
+            for text in buf.drain(..) {
+                out.push(Fragment { word_index: idx, text });
             }
         }
     }
     out
 }
 
-fn normalize_fragment(s: &str) -> String {
+fn normalize_into(s: &str, out: &mut Vec<String>) {
     let lower = s.to_lowercase();
     let folded: String = lower.chars().map(|c| if c == 'ё' { 'е' } else { c }).collect();
-    folded
-        .trim_matches(|c: char| PUNCT.contains(&c))
-        .to_string()
+    for raw_piece in folded.split(|c: char| SPLIT_PUNCT.contains(&c)) {
+        let piece = raw_piece.trim_matches(|c: char| TRIM_PUNCT.contains(&c));
+        if piece.is_empty() {
+            continue;
+        }
+        if let Some(split) = split_digit_hyphen_run(piece) {
+            out.extend(split);
+        } else {
+            out.push(piece.to_string());
+        }
+    }
+}
+
+/// If `s` looks like `digits(-digits)+` (e.g. ASR output `926-52511-17`),
+/// return the digit groups as separate pieces; otherwise None.
+/// Mixed forms like `100-летие` or `вице-президент` are left intact so the
+/// downstream merge logic can handle them.
+fn split_digit_hyphen_run(s: &str) -> Option<Vec<String>> {
+    if !s.contains('-') {
+        return None;
+    }
+    let parts: Vec<&str> = s.split('-').filter(|p| !p.is_empty()).collect();
+    if parts.len() < 2 {
+        return None;
+    }
+    if !parts.iter().all(|p| p.chars().all(|c| c.is_ascii_digit())) {
+        return None;
+    }
+    Some(parts.into_iter().map(|p| p.to_string()).collect())
 }
 
 fn group_into_tokens(frags: &[Fragment], lang: Language, words: &[Word]) -> Vec<Token> {
@@ -140,6 +175,30 @@ mod tests {
     fn digit_word_yields_number_token() {
         let toks = tokenize(&[w("123")], Language::English);
         assert_eq!(toks[0].canonical, Canonical::Number(123));
+    }
+
+    #[test]
+    fn interior_punct_splits_glued_words() {
+        let toks = tokenize(&[w("Яндекс.Колонку")], Language::Russian);
+        assert_eq!(toks.len(), 2);
+        assert_eq!(toks[0].canonical, Canonical::Word("яндекс".into()));
+        assert_eq!(toks[1].canonical, Canonical::Word("колонку".into()));
+    }
+
+    #[test]
+    fn digit_hyphen_run_splits_into_numbers() {
+        let toks = tokenize(&[w("926-52511-17")], Language::Russian);
+        assert_eq!(toks.len(), 3);
+        assert_eq!(toks[0].canonical, Canonical::Number(926));
+        assert_eq!(toks[1].canonical, Canonical::Number(52511));
+        assert_eq!(toks[2].canonical, Canonical::Number(17));
+    }
+
+    #[test]
+    fn mixed_hyphen_word_does_not_split() {
+        let toks = tokenize(&[w("100-летие")], Language::Russian);
+        assert_eq!(toks.len(), 1);
+        assert_eq!(toks[0].canonical, Canonical::Word("100летие".into()));
     }
 
     #[test]

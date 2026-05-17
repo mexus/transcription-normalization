@@ -11,6 +11,10 @@ pub enum Op {
 }
 
 const MERGE_CAP: usize = 3;
+/// Numbers can split or join across many tokens (ASR may emit a phone number
+/// as one digit run while a human spells out each digit), so allow a deeper
+/// merge depth when both sides of the merge are pure number runs.
+const MERGE_NUM_CAP: usize = 16;
 
 #[derive(Debug, Clone, Copy)]
 enum Back {
@@ -63,19 +67,27 @@ pub(crate) fn align(ref_tokens: &[Token], hyp_tokens: &[Token]) -> Vec<Op> {
                 tr = Back::Match { a: 1, b: 1 };
             }
 
-            if !canonicals_equal && should_try_merge(&ref_tokens[i - 1], &hyp_tokens[j - 1]) {
-                let amax = MERGE_CAP.min(i);
-                let bmax = MERGE_CAP.min(j);
+            if !canonicals_equal
+                && let Some(kind) = merge_kind(&ref_tokens[i - 1], &hyp_tokens[j - 1])
+            {
+                let cap = match kind {
+                    MergeKind::Word => MERGE_CAP,
+                    MergeKind::Number => MERGE_NUM_CAP,
+                };
+                let amax = cap.min(i);
+                let bmax = cap.min(j);
                 for a in 1..=amax {
                     for b in 1..=bmax {
                         if a == 1 && b == 1 {
                             continue;
                         }
-                        if !all_words(&ref_tokens[i - a..i]) || !all_words(&hyp_tokens[j - b..j]) {
+                        if !all_of_kind(&ref_tokens[i - a..i], kind)
+                            || !all_of_kind(&hyp_tokens[j - b..j], kind)
+                        {
                             continue;
                         }
-                        if concat_words(&ref_tokens[i - a..i])
-                            == concat_words(&hyp_tokens[j - b..j])
+                        if concat_kind(&ref_tokens[i - a..i], kind)
+                            == concat_kind(&hyp_tokens[j - b..j], kind)
                         {
                             let cost = d[i - a][j - b];
                             if cost < best {
@@ -125,23 +137,58 @@ pub(crate) fn align(ref_tokens: &[Token], hyp_tokens: &[Token]) -> Vec<Op> {
     ops
 }
 
-fn should_try_merge(r: &Token, h: &Token) -> bool {
-    let (rw, hw) = match (&r.canonical, &h.canonical) {
-        (Canonical::Word(rw), Canonical::Word(hw)) => (rw, hw),
-        _ => return false,
-    };
-    rw.ends_with(hw.as_str()) || hw.ends_with(rw.as_str())
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MergeKind {
+    Word,
+    Number,
 }
 
-fn all_words(toks: &[Token]) -> bool {
-    toks.iter().all(|t| matches!(t.canonical, Canonical::Word(_)))
+/// Returns the merge kind if the last two tokens are the same `Canonical` variant
+/// AND one side's surface form (canonical word, or decimal string of a number) is
+/// a suffix of the other. The suffix gate keeps the inner DP loop cheap: a valid
+/// concat-equality merge must align character-by-character at the right end of
+/// the merged string, so no suffix overlap means no possible merge.
+fn merge_kind(r: &Token, h: &Token) -> Option<MergeKind> {
+    match (&r.canonical, &h.canonical) {
+        (Canonical::Word(rw), Canonical::Word(hw)) => {
+            if rw.ends_with(hw.as_str()) || hw.ends_with(rw.as_str()) {
+                Some(MergeKind::Word)
+            } else {
+                None
+            }
+        }
+        (Canonical::Number(rn), Canonical::Number(hn)) => {
+            let rs = rn.to_string();
+            let hs = hn.to_string();
+            if rs.ends_with(&hs) || hs.ends_with(&rs) {
+                Some(MergeKind::Number)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }
 
-fn concat_words(toks: &[Token]) -> String {
+fn all_of_kind(toks: &[Token], kind: MergeKind) -> bool {
+    toks.iter().all(|t| {
+        matches!(
+            (kind, &t.canonical),
+            (MergeKind::Word, Canonical::Word(_)) | (MergeKind::Number, Canonical::Number(_))
+        )
+    })
+}
+
+fn concat_kind(toks: &[Token], kind: MergeKind) -> String {
     let mut out = String::new();
     for t in toks {
-        if let Canonical::Word(s) = &t.canonical {
-            out.push_str(s);
+        match (kind, &t.canonical) {
+            (MergeKind::Word, Canonical::Word(s)) => out.push_str(s),
+            (MergeKind::Number, Canonical::Number(n)) => {
+                use std::fmt::Write;
+                let _ = write!(out, "{n}");
+            }
+            _ => {}
         }
     }
     out
@@ -267,6 +314,34 @@ mod tests {
         let ops = align(&r, &h);
         assert_eq!(ops.len(), 1);
         assert!(matches!(ops[0], Op::Sub { .. }));
+    }
+
+    #[test]
+    fn number_run_merges_on_digit_concat() {
+        // ref says "twenty zero zero", hyp says "2000": three numbers vs one,
+        // decimal-string concat is "2000" on both sides.
+        let r = vec![num_tok(20), num_tok(0), num_tok(0)];
+        let h = vec![num_tok(2000)];
+        let ops = align(&r, &h);
+        assert_eq!(ops.len(), 1);
+        match &ops[0] {
+            Op::Match { ref_range, hyp_range } => {
+                assert_eq!(*ref_range, 0..3);
+                assert_eq!(*hyp_range, 0..1);
+            }
+            other => panic!("expected Match, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn number_run_merges_phone_number_segmentation() {
+        // ref enumerates digits, hyp groups them: both concatenate to "3709363".
+        let r = vec![num_tok(3), num_tok(7), num_tok(0), num_tok(9), num_tok(3), num_tok(6), num_tok(3)];
+        let h = vec![num_tok(370), num_tok(9363)];
+        let ops = align(&r, &h);
+        // Should produce one or two Match ops covering everything (no Sub/Del/Ins).
+        assert!(ops.iter().all(|o| matches!(o, Op::Match { .. })),
+            "expected only Match ops, got {:?}", ops);
     }
 
     #[test]
