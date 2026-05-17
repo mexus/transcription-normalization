@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use crate::token::Fragment;
 
-use super::{Atom, grammar_parse};
+use super::{Atom, longest_valid_prefix};
 
 static TABLE: LazyLock<HashMap<&'static str, Atom>> = LazyLock::new(build_table);
 
@@ -86,9 +86,7 @@ pub(crate) fn try_consume(frags: &[Fragment]) -> Option<(usize, i64)> {
 
 fn parse_word_run(frags: &[Fragment]) -> Option<(usize, i64)> {
     let mut atoms: Vec<Atom> = Vec::new();
-    let mut consumed = 0usize;
-    let mut last_real_consumed = 0usize;
-    let mut last_real_atoms_len = 0usize;
+    let mut frag_atom_ends: Vec<usize> = Vec::new();
 
     for frag in frags {
         let pieces: Vec<&str> = frag.text.split('-').filter(|s| !s.is_empty()).collect();
@@ -117,20 +115,10 @@ fn parse_word_run(frags: &[Fragment]) -> Option<(usize, i64)> {
         }
 
         atoms.extend(frag_atoms);
-        consumed += 1;
-        if has_real {
-            last_real_consumed = consumed;
-            last_real_atoms_len = atoms.len();
-        }
+        frag_atom_ends.push(atoms.len());
     }
 
-    atoms.truncate(last_real_atoms_len);
-
-    if atoms.is_empty() {
-        return None;
-    }
-
-    grammar_parse(&atoms).map(|v| (last_real_consumed, v))
+    longest_valid_prefix(&atoms, &frag_atom_ends)
 }
 
 #[cfg(test)]

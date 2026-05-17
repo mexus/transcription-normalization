@@ -23,6 +23,32 @@ pub(crate) enum Atom {
     Zero,
 }
 
+/// Find the longest fragment-prefix whose atoms grammar-parse to a valid integer.
+///
+/// `frag_atom_ends[k]` is the atom-count after the first `k+1` fragments. The greedy
+/// collector in each language parser may swallow more fragments than form a valid number
+/// (e.g. two sentences of digits glued together by punctuation stripping). On failure,
+/// shrink the prefix one fragment at a time. A prefix ending in a `Glue` atom (English
+/// "and") is skipped — leaving a dangling conjunction would be wrong.
+pub(crate) fn longest_valid_prefix(
+    atoms: &[Atom],
+    frag_atom_ends: &[usize],
+) -> Option<(usize, i64)> {
+    for k in (1..=frag_atom_ends.len()).rev() {
+        let end = frag_atom_ends[k - 1];
+        if end == 0 {
+            continue;
+        }
+        if matches!(atoms.get(end - 1), Some(Atom::Glue)) {
+            continue;
+        }
+        if let Some(v) = grammar_parse(&atoms[..end]) {
+            return Some((k, v));
+        }
+    }
+    None
+}
+
 pub(crate) fn grammar_parse(atoms: &[Atom]) -> Option<i64> {
     if atoms.is_empty() {
         return None;

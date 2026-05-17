@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use crate::token::Fragment;
 
-use super::{Atom, grammar_parse};
+use super::{Atom, longest_valid_prefix};
 
 static TABLE: LazyLock<HashMap<String, Atom>> = LazyLock::new(build_table);
 
@@ -226,7 +226,7 @@ pub(crate) fn try_consume(frags: &[Fragment]) -> Option<(usize, i64)> {
 
 fn parse_word_run(frags: &[Fragment]) -> Option<(usize, i64)> {
     let mut atoms: Vec<Atom> = Vec::new();
-    let mut consumed = 0usize;
+    let mut frag_atom_ends: Vec<usize> = Vec::new();
 
     for frag in frags {
         let pieces: Vec<&str> = frag.text.split('-').filter(|s| !s.is_empty()).collect();
@@ -250,14 +250,10 @@ fn parse_word_run(frags: &[Fragment]) -> Option<(usize, i64)> {
         }
 
         atoms.extend(frag_atoms);
-        consumed += 1;
+        frag_atom_ends.push(atoms.len());
     }
 
-    if atoms.is_empty() {
-        return None;
-    }
-
-    grammar_parse(&atoms).map(|v| (consumed, v))
+    longest_valid_prefix(&atoms, &frag_atom_ends)
 }
 
 #[cfg(test)]
@@ -323,6 +319,20 @@ mod tests {
     fn stops_at_non_number() {
         assert_eq!(parse(&["сто", "рублей"]), Some((1, 100)));
         assert_eq!(parse(&["первого", "января"]), Some((1, 1)));
+    }
+
+    #[test]
+    fn backtracks_on_invalid_grammar_in_run() {
+        // Two sentences worth of number-words glued together by punctuation stripping.
+        // Greedy collection swallows the whole run; the grammar rejects it; we must
+        // back off to the longest valid fragment-prefix and leave the rest for the
+        // next call.
+        assert_eq!(
+            parse(&["девятьсот", "двадцать", "шесть", "пятьдесят", "два"]),
+            Some((3, 926))
+        );
+        assert_eq!(parse(&["пятьдесят", "два", "пятьсот"]), Some((2, 52)));
+        assert_eq!(parse(&["сорок", "четырнадцать"]), Some((1, 40)));
     }
 
     #[test]

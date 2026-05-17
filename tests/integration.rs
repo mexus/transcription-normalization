@@ -236,6 +236,85 @@ fn op_timing_delete_has_no_hyp_span() {
 }
 
 #[test]
+fn user_supplied_failing_sample() {
+    // Real-world sample where alignment was reported to fail. Em-dashes in the
+    // original hypothesis display were alignment-gap fillers, not literal ASR
+    // output, so they are stripped here.
+    let ref_text = "Пополнить телефон друга на сто рублеи. Девятьсот двадцать шесть. \
+        Пятьдесят два. Пятьсот одинадцать семнадцать. Купить Яндекс колонку. \
+        У вас консьерж сервис в отеле работает целыи день. Часть один. \
+        Сезон семь. Однажды в сказке. Сольвычегодск. У тебя есть боицы? \
+        Два девятьсот девяносто семь. Восемьсот восемьдесят девять. \
+        Сорок четырнадцать. Наиди песню. Две минуты жизни. \
+        Хочу пополнить телефон, но не свои номер. Афина. \
+        Когда карта Мир будет готова? Включить. \
+        Приставка в двадцать ноль ноль. Наиди мультфильм, Губка Боб. \
+        Пять, восемьсот сорок пять. Три, Семь ноль девять. Три, шесть, три. \
+        Великолепная семерка с Джулианои Мур. Покажи!";
+
+    let hyp_text = "Пополнить телефон друга на 100 ₽ 926 52 511 17 купить \
+        Яндекс Колонку у вас консьерж-сервис в отеле работает целыи день? \
+        Часть один, сезон семь. Однажды в сказке Сольвычегодск. \
+        У тебя есть боицы 29784 «Две минуты жизни». \
+        Хочу пополнить телефон, но не свои номер. \
+        Афина, когда карта Мир будет готова? \
+        Включить приставку в 200 мультфильм Губка Бобсоро 3709363 Мур. Покажи.";
+
+    let r: Vec<Word> = ref_text.split_whitespace().map(w).collect();
+    let h: Vec<Word> = hyp_text.split_whitespace().map(w).collect();
+
+    let result = compare(&r, &h, Language::Russian);
+
+    eprintln!("\n=== REF/HYP alignment for failing sample ===");
+    eprintln!("ref tokens: {}  hyp tokens: {}", result.ref_tokens.len(), result.hyp_tokens.len());
+    eprintln!(
+        "S={} I={} D={}  errors={}  WER={:.3}",
+        result.substitutions(),
+        result.insertions(),
+        result.deletions(),
+        result.errors(),
+        result.wer()
+    );
+    eprintln!("\nOps:");
+
+    fn render(c: &Canonical) -> String {
+        match c {
+            Canonical::Word(s) => format!("\"{}\"", s),
+            Canonical::Number(n) => format!("#{}", n),
+        }
+    }
+
+    for op in &result.ops {
+        match op {
+            Op::Match { ref_range, hyp_range } => {
+                let rs: Vec<String> = ref_range
+                    .clone()
+                    .map(|i| render(&result.ref_tokens[i].canonical))
+                    .collect();
+                let hs: Vec<String> = hyp_range
+                    .clone()
+                    .map(|i| render(&result.hyp_tokens[i].canonical))
+                    .collect();
+                eprintln!("  =  {} ≡ {}", rs.join(" "), hs.join(" "));
+            }
+            Op::Sub { ref_idx, hyp_idx } => {
+                eprintln!(
+                    "  S  {}  →  {}",
+                    render(&result.ref_tokens[*ref_idx].canonical),
+                    render(&result.hyp_tokens[*hyp_idx].canonical)
+                );
+            }
+            Op::Ins { hyp_idx } => {
+                eprintln!("  +  {}", render(&result.hyp_tokens[*hyp_idx].canonical));
+            }
+            Op::Del { ref_idx } => {
+                eprintln!("  -  {}", render(&result.ref_tokens[*ref_idx].canonical));
+            }
+        }
+    }
+}
+
+#[test]
 fn op_timing_computes_start_offset_for_framework() {
     // Demonstrate the kind of metric a framework would compute.
     let r = vec![tw("hello", 0.0, 0.5), tw("world", 0.5, 1.0)];
