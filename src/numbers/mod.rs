@@ -114,7 +114,8 @@ pub(crate) fn grammar_parse(atoms: &[Atom]) -> Option<i64> {
                 saw_hundreds = true;
             }
             Atom::Scale(v) => {
-                let block = if segment == 0 && !saw_units && !saw_teen && !saw_tens && !saw_hundreds {
+                let block = if segment == 0 && !saw_units && !saw_teen && !saw_tens && !saw_hundreds
+                {
                     1
                 } else {
                     segment

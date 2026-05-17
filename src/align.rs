@@ -4,10 +4,20 @@ use crate::token::{Canonical, Token};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Op {
-    Match { ref_range: Range<usize>, hyp_range: Range<usize> },
-    Sub { ref_idx: usize, hyp_idx: usize },
-    Ins { hyp_idx: usize },
-    Del { ref_idx: usize },
+    Match {
+        ref_range: Range<usize>,
+        hyp_range: Range<usize>,
+    },
+    Sub {
+        ref_idx: usize,
+        hyp_idx: usize,
+    },
+    Ins {
+        hyp_idx: usize,
+    },
+    Del {
+        ref_idx: usize,
+    },
 }
 
 const MERGE_CAP: usize = 3;
@@ -119,7 +129,10 @@ pub(crate) fn align(ref_tokens: &[Token], hyp_tokens: &[Token]) -> Vec<Op> {
                 j -= 1;
             }
             Back::Sub => {
-                ops.push(Op::Sub { ref_idx: i - 1, hyp_idx: j - 1 });
+                ops.push(Op::Sub {
+                    ref_idx: i - 1,
+                    hyp_idx: j - 1,
+                });
                 i -= 1;
                 j -= 1;
             }
@@ -264,7 +277,10 @@ mod tests {
         let ops = align(&r, &h);
         assert_eq!(ops.len(), 1);
         match &ops[0] {
-            Op::Match { ref_range, hyp_range } => {
+            Op::Match {
+                ref_range,
+                hyp_range,
+            } => {
                 assert_eq!(*ref_range, 0..1);
                 assert_eq!(*hyp_range, 0..2);
             }
@@ -279,7 +295,10 @@ mod tests {
         let ops = align(&r, &h);
         assert_eq!(ops.len(), 1);
         match &ops[0] {
-            Op::Match { ref_range, hyp_range } => {
+            Op::Match {
+                ref_range,
+                hyp_range,
+            } => {
                 assert_eq!(*ref_range, 0..2);
                 assert_eq!(*hyp_range, 0..1);
             }
@@ -325,7 +344,10 @@ mod tests {
         let ops = align(&r, &h);
         assert_eq!(ops.len(), 1);
         match &ops[0] {
-            Op::Match { ref_range, hyp_range } => {
+            Op::Match {
+                ref_range,
+                hyp_range,
+            } => {
                 assert_eq!(*ref_range, 0..3);
                 assert_eq!(*hyp_range, 0..1);
             }
@@ -336,12 +358,23 @@ mod tests {
     #[test]
     fn number_run_merges_phone_number_segmentation() {
         // ref enumerates digits, hyp groups them: both concatenate to "3709363".
-        let r = vec![num_tok(3), num_tok(7), num_tok(0), num_tok(9), num_tok(3), num_tok(6), num_tok(3)];
+        let r = vec![
+            num_tok(3),
+            num_tok(7),
+            num_tok(0),
+            num_tok(9),
+            num_tok(3),
+            num_tok(6),
+            num_tok(3),
+        ];
         let h = vec![num_tok(370), num_tok(9363)];
         let ops = align(&r, &h);
         // Should produce one or two Match ops covering everything (no Sub/Del/Ins).
-        assert!(ops.iter().all(|o| matches!(o, Op::Match { .. })),
-            "expected only Match ops, got {:?}", ops);
+        assert!(
+            ops.iter().all(|o| matches!(o, Op::Match { .. })),
+            "expected only Match ops, got {:?}",
+            ops
+        );
     }
 
     #[test]

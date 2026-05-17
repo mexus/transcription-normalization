@@ -11,7 +11,10 @@ pub struct Token {
 
 impl Token {
     pub fn span(&self) -> TimeSpan {
-        TimeSpan { start: self.start, end: self.end }
+        TimeSpan {
+            start: self.start,
+            end: self.end,
+        }
     }
 }
 

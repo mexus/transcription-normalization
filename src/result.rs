@@ -20,15 +20,24 @@ pub struct OpTiming {
 
 impl AlignmentResult {
     pub fn substitutions(&self) -> usize {
-        self.ops.iter().filter(|o| matches!(o, Op::Sub { .. })).count()
+        self.ops
+            .iter()
+            .filter(|o| matches!(o, Op::Sub { .. }))
+            .count()
     }
 
     pub fn insertions(&self) -> usize {
-        self.ops.iter().filter(|o| matches!(o, Op::Ins { .. })).count()
+        self.ops
+            .iter()
+            .filter(|o| matches!(o, Op::Ins { .. }))
+            .count()
     }
 
     pub fn deletions(&self) -> usize {
-        self.ops.iter().filter(|o| matches!(o, Op::Del { .. })).count()
+        self.ops
+            .iter()
+            .filter(|o| matches!(o, Op::Del { .. }))
+            .count()
     }
 
     pub fn ref_token_count(&self) -> usize {
@@ -42,7 +51,11 @@ impl AlignmentResult {
     pub fn wer(&self) -> f64 {
         let n = self.ref_token_count();
         if n == 0 {
-            return if self.errors() == 0 { 0.0 } else { f64::INFINITY };
+            return if self.errors() == 0 {
+                0.0
+            } else {
+                f64::INFINITY
+            };
         }
         self.errors() as f64 / n as f64
     }
@@ -53,7 +66,10 @@ impl AlignmentResult {
     /// between 1-1 and N-M matches when computing timing errors.
     pub fn op_timing(&self, op: &Op) -> OpTiming {
         match op {
-            Op::Match { ref_range, hyp_range } => OpTiming {
+            Op::Match {
+                ref_range,
+                hyp_range,
+            } => OpTiming {
                 ref_span: span_over(&self.ref_tokens, ref_range.clone()),
                 hyp_span: span_over(&self.hyp_tokens, hyp_range.clone()),
             },
@@ -79,6 +95,9 @@ fn span_over(tokens: &[Token], range: Range<usize>) -> Option<TimeSpan> {
     }
     let slice = &tokens[range];
     let start = slice.iter().map(|t| t.start).fold(f64::INFINITY, f64::min);
-    let end = slice.iter().map(|t| t.end).fold(f64::NEG_INFINITY, f64::max);
+    let end = slice
+        .iter()
+        .map(|t| t.end)
+        .fold(f64::NEG_INFINITY, f64::max);
     Some(TimeSpan { start, end })
 }

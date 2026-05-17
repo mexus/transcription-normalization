@@ -129,7 +129,10 @@ mod tests {
         words
             .iter()
             .enumerate()
-            .map(|(i, w)| Fragment { word_index: i, text: w.to_string() })
+            .map(|(i, w)| Fragment {
+                word_index: i,
+                text: w.to_string(),
+            })
             .collect()
     }
 
@@ -164,7 +167,10 @@ mod tests {
     #[test]
     fn hundreds() {
         assert_eq!(parse(&["one", "hundred"]), Some((2, 100)));
-        assert_eq!(parse(&["one", "hundred", "and", "twenty", "three"]), Some((5, 123)));
+        assert_eq!(
+            parse(&["one", "hundred", "and", "twenty", "three"]),
+            Some((5, 123))
+        );
         assert_eq!(parse(&["five", "hundred"]), Some((2, 500)));
         assert_eq!(parse(&["hundredth"]), Some((1, 100)));
     }
@@ -176,7 +182,9 @@ mod tests {
         assert_eq!(parse(&["two", "thousand"]), Some((2, 2_000)));
         assert_eq!(parse(&["two", "million", "three"]), Some((3, 2_000_003)));
         assert_eq!(
-            parse(&["one", "hundred", "twenty", "three", "thousand", "four", "hundred", "fifty", "six"]),
+            parse(&[
+                "one", "hundred", "twenty", "three", "thousand", "four", "hundred", "fifty", "six"
+            ]),
             Some((9, 123_456))
         );
     }

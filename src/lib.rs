@@ -20,5 +20,9 @@ pub fn compare(reference: &[Word], hypothesis: &[Word], lang: Language) -> Align
     let ref_tokens = normalize::tokenize(reference, lang);
     let hyp_tokens = normalize::tokenize(hypothesis, lang);
     let ops = align::align(&ref_tokens, &hyp_tokens);
-    AlignmentResult { ref_tokens, hyp_tokens, ops }
+    AlignmentResult {
+        ref_tokens,
+        hyp_tokens,
+        ops,
+    }
 }

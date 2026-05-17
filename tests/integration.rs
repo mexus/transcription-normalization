@@ -1,4 +1,4 @@
-use transcription_normalization::{compare, Canonical, Language, Op, Word};
+use transcription_normalization::{Canonical, Language, Op, Word, compare};
 
 fn w(text: &str) -> Word {
     Word::new(text, 0.0, 0.0)
@@ -118,12 +118,30 @@ fn token_word_indices_point_back_to_input() {
 fn realistic_mixed_pair() {
     // A messy ref vs a clean hyp — verify the metric is sane (not 0, not crazy).
     let r = words(&[
-        "Президент", "сказал,", "что", "к", "2030", "году",
-        "вице-президент", "посетит", "сто", "стран.",
+        "Президент",
+        "сказал,",
+        "что",
+        "к",
+        "2030",
+        "году",
+        "вице-президент",
+        "посетит",
+        "сто",
+        "стран.",
     ]);
     let h = words(&[
-        "президент", "сказал", "что", "к", "две", "тысячи", "тридцатому",
-        "году", "вицепрезидент", "посетит", "100", "стран",
+        "президент",
+        "сказал",
+        "что",
+        "к",
+        "две",
+        "тысячи",
+        "тридцатому",
+        "году",
+        "вицепрезидент",
+        "посетит",
+        "100",
+        "стран",
     ]);
     let result = compare(&r, &h, Language::Russian);
     // Numerals + hyphen variants should all match. Only difference might be due to "2030" vs "две тысячи тридцатому":
@@ -146,7 +164,10 @@ fn hyphen_merge_produces_match_op_with_correct_ranges() {
     let result = compare(&r, &h, Language::Russian);
     assert_eq!(result.ops.len(), 1);
     match &result.ops[0] {
-        Op::Match { ref_range, hyp_range } => {
+        Op::Match {
+            ref_range,
+            hyp_range,
+        } => {
             assert_eq!(*ref_range, 0..1);
             assert_eq!(*hyp_range, 0..2);
         }
@@ -214,7 +235,11 @@ fn op_timing_insert_has_no_ref_span() {
     let r = vec![tw("hello", 0.0, 0.5)];
     let h = vec![tw("hello", 0.0, 0.5), tw("world", 0.5, 1.0)];
     let result = compare(&r, &h, Language::English);
-    let ins = result.ops.iter().find(|o| matches!(o, Op::Ins { .. })).unwrap();
+    let ins = result
+        .ops
+        .iter()
+        .find(|o| matches!(o, Op::Ins { .. }))
+        .unwrap();
     let t = result.op_timing(ins);
     assert!(t.ref_span.is_none());
     let hs = t.hyp_span.unwrap();
@@ -227,7 +252,11 @@ fn op_timing_delete_has_no_hyp_span() {
     let r = vec![tw("hello", 0.0, 0.5), tw("world", 0.5, 1.0)];
     let h = vec![tw("hello", 0.0, 0.5)];
     let result = compare(&r, &h, Language::English);
-    let del = result.ops.iter().find(|o| matches!(o, Op::Del { .. })).unwrap();
+    let del = result
+        .ops
+        .iter()
+        .find(|o| matches!(o, Op::Del { .. }))
+        .unwrap();
     let t = result.op_timing(del);
     assert!(t.hyp_span.is_none());
     let rs = t.ref_span.unwrap();
@@ -267,7 +296,11 @@ fn user_supplied_failing_sample() {
     let result = compare(&r, &h, Language::Russian);
 
     eprintln!("\n=== REF/HYP alignment for failing sample ===");
-    eprintln!("ref tokens: {}  hyp tokens: {}", result.ref_tokens.len(), result.hyp_tokens.len());
+    eprintln!(
+        "ref tokens: {}  hyp tokens: {}",
+        result.ref_tokens.len(),
+        result.hyp_tokens.len()
+    );
     eprintln!(
         "S={} I={} D={}  errors={}  WER={:.3}",
         result.substitutions(),
@@ -287,7 +320,10 @@ fn user_supplied_failing_sample() {
 
     for op in &result.ops {
         match op {
-            Op::Match { ref_range, hyp_range } => {
+            Op::Match {
+                ref_range,
+                hyp_range,
+            } => {
                 let rs: Vec<String> = ref_range
                     .clone()
                     .map(|i| render(&result.ref_tokens[i].canonical))

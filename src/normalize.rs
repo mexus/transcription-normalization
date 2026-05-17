@@ -7,8 +7,7 @@ use crate::word::Word;
 /// (e.g. `Яндекс.Колонку` from a transcriber joining names by `.`). Apostrophe
 /// is intentionally absent so English contractions stay glued.
 const SPLIT_PUNCT: &[char] = &[
-    '.', ',', '!', '?', ';', ':', '"', '«', '»', '(', ')', '[', ']',
-    '\u{201C}', '\u{201D}', '…',
+    '.', ',', '!', '?', ';', ':', '"', '«', '»', '(', ')', '[', ']', '\u{201C}', '\u{201D}', '…',
 ];
 
 /// Boundary-only punctuation: stripped from the start/end of a piece after
@@ -28,7 +27,10 @@ fn build_fragments(words: &[Word]) -> Vec<Fragment> {
             buf.clear();
             normalize_into(piece, &mut buf);
             for text in buf.drain(..) {
-                out.push(Fragment { word_index: idx, text });
+                out.push(Fragment {
+                    word_index: idx,
+                    text,
+                });
             }
         }
     }
@@ -37,7 +39,10 @@ fn build_fragments(words: &[Word]) -> Vec<Fragment> {
 
 fn normalize_into(s: &str, out: &mut Vec<String>) {
     let lower = s.to_lowercase();
-    let folded: String = lower.chars().map(|c| if c == 'ё' { 'е' } else { c }).collect();
+    let folded: String = lower
+        .chars()
+        .map(|c| if c == 'ё' { 'е' } else { c })
+        .collect();
     for raw_piece in folded.split(|c: char| SPLIT_PUNCT.contains(&c)) {
         let piece = raw_piece.trim_matches(|c: char| TRIM_PUNCT.contains(&c));
         if piece.is_empty() {
@@ -163,7 +168,10 @@ mod tests {
 
     #[test]
     fn collapses_number_run() {
-        let toks = tokenize(&[w("сто"), w("двадцать"), w("три"), w("рубля")], Language::Russian);
+        let toks = tokenize(
+            &[w("сто"), w("двадцать"), w("три"), w("рубля")],
+            Language::Russian,
+        );
         assert_eq!(toks.len(), 2);
         assert_eq!(toks[0].canonical, Canonical::Number(123));
         assert_eq!(toks[0].word_indices, vec![0, 1, 2]);
