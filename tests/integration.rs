@@ -4,6 +4,10 @@ fn w(text: &str) -> Word {
     Word::new(text, 0.0, 0.0)
 }
 
+fn tw(text: &str, start: f64, end: f64) -> Word {
+    Word::new(text, start, end)
+}
+
 fn words(texts: &[&str]) -> Vec<Word> {
     texts.iter().map(|t| w(t)).collect()
 }
@@ -148,4 +152,104 @@ fn hyphen_merge_produces_match_op_with_correct_ranges() {
         }
         other => panic!("expected Match, got {:?}", other),
     }
+}
+
+#[test]
+fn op_timing_single_token_match() {
+    let r = vec![tw("hello", 0.0, 0.5), tw("world", 0.5, 1.0)];
+    let h = vec![tw("hello", 0.1, 0.6), tw("world", 0.6, 1.1)];
+    let result = compare(&r, &h, Language::English);
+    assert_eq!(result.ops.len(), 2);
+
+    let t0 = result.op_timing(&result.ops[0]);
+    let rs = t0.ref_span.unwrap();
+    let hs = t0.hyp_span.unwrap();
+    assert!((rs.start - 0.0).abs() < 1e-9);
+    assert!((rs.end - 0.5).abs() < 1e-9);
+    assert!((hs.start - 0.1).abs() < 1e-9);
+    assert!((hs.end - 0.6).abs() < 1e-9);
+}
+
+#[test]
+fn op_timing_n_to_m_match_unions_ranges() {
+    // ref is one Word "вице-президент" 0.0..1.0
+    // hyp is two Words "вице" 0.2..0.6 and "президент" 0.6..1.1
+    // The hyphen merge produces a single Match; its ref span should be 0..1.0,
+    // its hyp span the union 0.2..1.1.
+    let r = vec![tw("вице-президент", 0.0, 1.0)];
+    let h = vec![tw("вице", 0.2, 0.6), tw("президент", 0.6, 1.1)];
+    let result = compare(&r, &h, Language::Russian);
+    assert_eq!(result.ops.len(), 1);
+    let t = result.op_timing(&result.ops[0]);
+    let rs = t.ref_span.unwrap();
+    let hs = t.hyp_span.unwrap();
+    assert!((rs.start - 0.0).abs() < 1e-9);
+    assert!((rs.end - 1.0).abs() < 1e-9);
+    assert!((hs.start - 0.2).abs() < 1e-9);
+    assert!((hs.end - 1.1).abs() < 1e-9, "hyp_span.end was {}", hs.end);
+}
+
+#[test]
+fn op_timing_collapsed_number_spans_all_source_words() {
+    let r = vec![
+        tw("сто", 0.0, 0.3),
+        tw("двадцать", 0.3, 0.7),
+        tw("три", 0.7, 1.0),
+    ];
+    let h = vec![tw("123", 0.05, 0.95)];
+    let result = compare(&r, &h, Language::Russian);
+    assert_eq!(result.errors(), 0);
+    let t = result.op_timing(&result.ops[0]);
+    let rs = t.ref_span.unwrap();
+    let hs = t.hyp_span.unwrap();
+    // Collapsed number on ref side spans the union of all 3 input Words.
+    assert!((rs.start - 0.0).abs() < 1e-9);
+    assert!((rs.end - 1.0).abs() < 1e-9);
+    assert!((hs.start - 0.05).abs() < 1e-9);
+    assert!((hs.end - 0.95).abs() < 1e-9);
+}
+
+#[test]
+fn op_timing_insert_has_no_ref_span() {
+    let r = vec![tw("hello", 0.0, 0.5)];
+    let h = vec![tw("hello", 0.0, 0.5), tw("world", 0.5, 1.0)];
+    let result = compare(&r, &h, Language::English);
+    let ins = result.ops.iter().find(|o| matches!(o, Op::Ins { .. })).unwrap();
+    let t = result.op_timing(ins);
+    assert!(t.ref_span.is_none());
+    let hs = t.hyp_span.unwrap();
+    assert!((hs.start - 0.5).abs() < 1e-9);
+    assert!((hs.end - 1.0).abs() < 1e-9);
+}
+
+#[test]
+fn op_timing_delete_has_no_hyp_span() {
+    let r = vec![tw("hello", 0.0, 0.5), tw("world", 0.5, 1.0)];
+    let h = vec![tw("hello", 0.0, 0.5)];
+    let result = compare(&r, &h, Language::English);
+    let del = result.ops.iter().find(|o| matches!(o, Op::Del { .. })).unwrap();
+    let t = result.op_timing(del);
+    assert!(t.hyp_span.is_none());
+    let rs = t.ref_span.unwrap();
+    assert!((rs.start - 0.5).abs() < 1e-9);
+    assert!((rs.end - 1.0).abs() < 1e-9);
+}
+
+#[test]
+fn op_timing_computes_start_offset_for_framework() {
+    // Demonstrate the kind of metric a framework would compute.
+    let r = vec![tw("hello", 0.0, 0.5), tw("world", 0.5, 1.0)];
+    let h = vec![tw("hello", 0.05, 0.55), tw("world", 0.60, 1.10)];
+    let result = compare(&r, &h, Language::English);
+
+    let mut offsets = Vec::new();
+    for op in &result.ops {
+        let t = result.op_timing(op);
+        if let (Some(r), Some(h)) = (t.ref_span, t.hyp_span) {
+            offsets.push(h.start - r.start);
+        }
+    }
+    assert_eq!(offsets.len(), 2);
+    assert!((offsets[0] - 0.05).abs() < 1e-9);
+    assert!((offsets[1] - 0.10).abs() < 1e-9);
 }

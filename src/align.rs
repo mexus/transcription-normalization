@@ -156,6 +156,8 @@ mod tests {
             word_indices: vec![0],
             raw: s.to_string(),
             canonical: Canonical::Word(s.replace('-', "")),
+            start: 0.0,
+            end: 0.0,
         }
     }
 
@@ -164,6 +166,8 @@ mod tests {
             word_indices: vec![0],
             raw: n.to_string(),
             canonical: Canonical::Number(n),
+            start: 0.0,
+            end: 0.0,
         }
     }
 

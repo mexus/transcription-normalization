@@ -12,8 +12,8 @@ mod word;
 
 pub use align::Op;
 pub use language::Language;
-pub use result::AlignmentResult;
-pub use token::{Canonical, Token};
+pub use result::{AlignmentResult, OpTiming};
+pub use token::{Canonical, TimeSpan, Token};
 pub use word::Word;
 
 pub fn compare(reference: &[Word], hypothesis: &[Word], lang: Language) -> AlignmentResult {

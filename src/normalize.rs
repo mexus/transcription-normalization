@@ -10,7 +10,7 @@ const PUNCT: &[char] = &[
 
 pub fn tokenize(words: &[Word], lang: Language) -> Vec<Token> {
     let fragments = build_fragments(words);
-    group_into_tokens(&fragments, lang)
+    group_into_tokens(&fragments, lang, words)
 }
 
 fn build_fragments(words: &[Word]) -> Vec<Fragment> {
@@ -34,7 +34,7 @@ fn normalize_fragment(s: &str) -> String {
         .to_string()
 }
 
-fn group_into_tokens(frags: &[Fragment], lang: Language) -> Vec<Token> {
+fn group_into_tokens(frags: &[Fragment], lang: Language, words: &[Word]) -> Vec<Token> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < frags.len() {
@@ -49,10 +49,13 @@ fn group_into_tokens(frags: &[Fragment], lang: Language) -> Vec<Token> {
             let mut word_indices: Vec<usize> =
                 frags[i..i + n].iter().map(|f| f.word_index).collect();
             word_indices.dedup();
+            let (start, end) = span_over_words(&word_indices, words);
             out.push(Token {
                 word_indices,
                 raw,
                 canonical: Canonical::Number(value),
+                start,
+                end,
             });
             i += n;
             continue;
@@ -60,14 +63,32 @@ fn group_into_tokens(frags: &[Fragment], lang: Language) -> Vec<Token> {
         let frag = &frags[i];
         let raw = frag.text.clone();
         let canonical_text: String = raw.chars().filter(|&c| c != '-').collect();
+        let w = &words[frag.word_index];
         out.push(Token {
             word_indices: vec![frag.word_index],
             raw,
             canonical: Canonical::Word(canonical_text),
+            start: w.start,
+            end: w.end,
         });
         i += 1;
     }
     out
+}
+
+fn span_over_words(indices: &[usize], words: &[Word]) -> (f64, f64) {
+    let mut start = f64::INFINITY;
+    let mut end = f64::NEG_INFINITY;
+    for &i in indices {
+        let w = &words[i];
+        if w.start < start {
+            start = w.start;
+        }
+        if w.end > end {
+            end = w.end;
+        }
+    }
+    (start, end)
 }
 
 #[cfg(test)]
